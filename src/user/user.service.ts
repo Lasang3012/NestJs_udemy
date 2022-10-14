@@ -1,3 +1,4 @@
+import { UpdateUserDto } from './dto/updateUser.dto';
 import { LoginUserDto } from './dto/loginUser.dto';
 import { JWT_SECRET } from '@app/../../config';
 import { Repository } from 'typeorm';
@@ -31,6 +32,12 @@ export class UserService {
     const newUser = new UserEntity();
     Object.assign(newUser, createUserDto);
     return await this.userRepository.save(newUser);
+  }
+
+  async updateUser(userId: number, updateUserDto: UpdateUserDto): Promise<any> {
+    const user = await this.findById(userId);
+    Object.assign(user, updateUserDto);
+    return await this.userRepository.save(user);
   }
 
   async login(loginUserDto: LoginUserDto) {
