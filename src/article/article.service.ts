@@ -1,15 +1,15 @@
-import { TagEntity } from './../tag/tag.entity';
+import { ArticlesResponseInterface } from './types/articlesResponse.interface';
 import { TagService } from './../tag/tag.service';
-import { ArticleResponseInterface } from './types/articleResponse.interface';
 import { UpdateArticleDto } from './dto/updateArticle.dto';
 import { UserEntity } from '@app/user/user.entity';
 import { ArticleEntity } from './article.entity';
 import { CreateArticleDto } from './dto/createArticle.dto';
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeleteResult, Repository, DataSource, Entity } from 'typeorm';
+import { DeleteResult, Repository, DataSource, Entity, Any } from 'typeorm';
 import slugify from 'slugify';
-import { ArticlesResponseInterface } from './dto/articleResponse.interface';
+import { ArticleResponseInterface } from './types/articleResponse.interface';
+import { FollowEntity } from '@app/profile/follow.entity';
 
 @Injectable()
 export class ArticleService {
@@ -19,6 +19,9 @@ export class ArticleService {
 
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+
+    @InjectRepository(FollowEntity)
+    private readonly followRepository: Repository<FollowEntity>,
 
     private readonly tagService: TagService,
     private dataSource: DataSource,
@@ -40,6 +43,69 @@ export class ArticleService {
       queryBuilder.andWhere('articles.authorId = :id', { id: author.id });
     }
 
+    if (query.favorited) {
+      const author = await this.userRepository.findOne({
+        where: { username: query.favorited },
+        relations: ['favorites'],
+      });
+
+      const ids = author.favorites.map((el) => el.id);
+      if (ids.length > 0) {
+        queryBuilder.andWhere('articles.id IN (:...ids)', { ids });
+      } else {
+        queryBuilder.andWhere('1=0');
+      }
+    }
+
+    queryBuilder.orderBy('articles.createdAt', 'DESC');
+    const articlesCount = await queryBuilder.getCount();
+    if (query.limit) {
+      queryBuilder.limit(query.limit);
+    }
+    if (query.offset) {
+      queryBuilder.offset(query.offset);
+    }
+
+    let favoriteIds: number[] = [];
+    if (currentUserId) {
+      const currentUser = await this.userRepository.findOne({
+        where: { id: currentUserId },
+        relations: ['favorites'],
+      });
+      favoriteIds = currentUser.favorites.map((favorite) => favorite.id);
+    }
+
+    const articles = await queryBuilder.getMany();
+    const articlesWithFavorited = articles.map((article) => {
+      const favorited = favoriteIds.includes(article.id);
+      return { ...article, favorited };
+    });
+
+    return { articles: articlesWithFavorited, articlesCount };
+  }
+
+  async getFeed(
+    currentUserId: number,
+    query: any,
+  ): Promise<ArticlesResponseInterface> {
+    const follows = await this.followRepository.find({
+      where: {
+        followerId: currentUserId,
+      },
+    });
+
+    if (follows.length === 0) {
+      return { articles: [], articlesCount: 0 };
+    }
+
+    const followingUserIds = follows.map((follow) => follow.followingId);
+
+    const queryBuilder = this.dataSource
+      .getRepository(ArticleEntity)
+      .createQueryBuilder('articles')
+      .leftJoinAndSelect('articles.author', 'author')
+      .where('articles.authorId IN(:...ids)', { ids: followingUserIds });
+
     queryBuilder.orderBy('articles.createdAt', 'DESC');
 
     const articlesCount = await queryBuilder.getCount();
@@ -47,20 +113,11 @@ export class ArticleService {
     if (query.limit) {
       queryBuilder.limit(query.limit);
     }
-
     if (query.offset) {
       queryBuilder.offset(query.offset);
     }
 
     const articles = await queryBuilder.getMany();
-
-    // let getTagList = articles.map((el) => el.tagList);
-    // let abc: string[];
-    // for (let i = 0; i < getTagList.length; i++) {
-    //   const tes = await Promise.all(
-    //     getTagList[i].map((el) => this.tagService.findTagById(parseInt(el))),
-    //   );
-    // }
 
     return { articles, articlesCount };
   }
@@ -91,10 +148,10 @@ export class ArticleService {
     }
 
     // get Name of Tag
-    const getAbc = await Promise.all(
-      result.tagList.map((el) => this.tagService.findTagById(parseInt(el))),
-    );
-    result.tagList = getAbc.map((el) => el.name);
+    // const getAbc = await Promise.all(
+    //   result.tagList.map((el) => this.tagService.findTagById(parseInt(el))),
+    // );
+    // result.tagList = await Promise.all(getAbc.map((el) => el.name));
 
     return result;
   }
@@ -148,6 +205,36 @@ export class ArticleService {
     if (isNotFavorited) {
       user.favorites.push(article);
       article.favoritesCount++;
+      await this.userRepository.save(user);
+      await this.articleRepository.save(article);
+    }
+
+    return article;
+  }
+
+  //deleteArticleFromFavorites
+  async deleteArticleFromFavorites(
+    slug: string,
+    userId: number,
+  ): Promise<ArticleEntity> {
+    const article = await this.findBySlug(slug);
+    console.log('ppppppppppp ', article);
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['favorites'],
+    });
+
+    console.log('bbbbbbb');
+
+    const articleIndex = user.favorites.findIndex(
+      (articleFavorites) => articleFavorites.id === article.id,
+    );
+
+    console.log('aaaaaaaa', articleIndex);
+
+    if (articleIndex >= 0) {
+      user.favorites.splice(articleIndex, 1);
+      article.favoritesCount--;
       await this.userRepository.save(user);
       await this.articleRepository.save(article);
     }

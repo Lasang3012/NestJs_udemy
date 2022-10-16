@@ -6,9 +6,17 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ArticleService } from './article.service';
 import { ArticleController } from './article.controller';
 import { Module } from '@nestjs/common';
+import { FollowEntity } from '@app/profile/follow.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ArticleEntity, TagEntity, UserEntity])],
+  imports: [
+    TypeOrmModule.forFeature([
+      ArticleEntity,
+      TagEntity,
+      UserEntity,
+      FollowEntity,
+    ]),
+  ],
   controllers: [ArticleController],
   providers: [ArticleService, TagService],
 })
