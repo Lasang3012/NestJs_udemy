@@ -1,11 +1,9 @@
 import { UpdateUserDto } from './dto/updateUser.dto';
 import { AuthGuard } from './../../guards/auth.guard';
 import { UserEntity } from '@app/user/user.entity';
-import { ExpressRequest } from './../../types/expressRequest.interface';
 import { LoginUserDto } from './dto/loginUser.dto';
 import { CreateUserDto } from './dto/createUser.dto';
 import { UserService } from '@app/user/user.service';
-import { Request } from 'express';
 import {
   Controller,
   Post,
@@ -18,6 +16,7 @@ import {
   Put,
 } from '@nestjs/common';
 import { User } from 'decorators/user.decorator';
+import { ExpressRequest } from './types/expressRequest.interface';
 
 @Controller()
 export class UserController {
@@ -40,8 +39,6 @@ export class UserController {
   @Get('user')
   @UseGuards(AuthGuard)
   async currentUser(@Req() request: ExpressRequest, @User() user: UserEntity) {
-    // console.log('request ttttttt', request);
-    // console.log('aaaaaaaaa ', user);
     return this.userSerive.buildUserResponse(user);
   }
 
